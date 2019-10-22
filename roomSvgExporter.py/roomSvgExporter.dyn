@@ -1,0 +1,122 @@
+{
+  "Uuid": "0e344279-3dd0-4081-bf73-24bbe883b4a8",
+  "IsCustomNode": false,
+  "Description": null,
+  "Name": "_pca_Plans au format SVG",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "NodeType": "PythonScriptNode",
+      "Code": "'''\r\nROOM SVG EXPORTER - EXPORT A SINGLE LEVELS ROOM BOUNDARIES\r\n-\r\na dynamoPython script, visit the website for more details\r\nhttps://github.com/Amoursol/dynamoPython\r\n'''\r\n__author__ = 'Adam Bear - adam@ukbear.com'\r\n__twitter__ = '@adambear82'\r\n__github__ = '@adambear82'\r\n__version__ = '1.0.1'\r\n\r\n'''\r\nfor large projects with lots of room data it is useful to analyse in\r\na business inteligence or data visualisation tool such as ms power bi.\r\nTo visualise rooms in power bi they can be cnoverted to svg and read\r\nwith the synoptic panel in power bi. This script collects rooms for a\r\nsingle selected level and creates an svg file from room boundaries\r\n'''\r\n\r\n# -----------------------\r\n# import modules\r\n# -----------------------\r\n\r\n# Common Language Runtime converts modules written in C# to python\r\nimport clr\r\n\r\n# import built in modules\r\nimport math\r\nimport sys\r\nfrom System.Collections.Generic import List\r\nfrom System import DateTime\r\n# record when svg was created so it can written into svg file\r\nstrNow = str(DateTime.Now)\r\n\r\n# add reference for RevitAPI (Autodesk) & RevitNodes (Revit)\r\nclr.AddReference('RevitAPI')\r\nclr.AddReference('RevitNodes')\r\nimport Autodesk, Revit\r\n# rather than using 'import *' import each class seperatly\r\n# to remove conflicts with other imported classes of the same name\r\n# notice how FilteredElementCollector is imported as fec\r\nfrom Autodesk.Revit.DB import \\\r\nAreaFilter, BuiltInParameter, ElementId, ElementLevelFilter, \\\r\nElementParameterFilter, ElementSet, ExclusionFilter, \\\r\nFilteredElementCollector as fec, \\\r\nFilterDoubleRule, FilterNumericGreater, LogicalAndFilter, \\\r\nModelPathUtils, ParameterValueProvider, SpatialElement, \\\r\nSpatialElementBoundaryOptions, SpatialElementBoundaryLocation\r\n# to create svg of areas instead of rooms import the room filter\r\n# so that rooms can be filtered instead of areas\r\nfrom Autodesk.Revit.DB.Architecture import RoomFilter\r\n\r\n# add reference for RevitServices (RevitServices)\r\nclr.AddReference('RevitServices')\r\nimport RevitServices\r\n# Import DocumentManager\r\nfrom RevitServices.Persistence import DocumentManager\r\n# use alias for document manager for ease of reference\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\n# file path and file name of the current revit document\r\ndocFilePath = doc.PathName\r\n# remove file name as string after final '\\' character in file path name\r\ndocPath = docFilePath.rsplit('\\\\', 1)[0]\r\n# add '\\' to end of string for folder path name\r\ndocPathFolder = docPath + '\\\\'\r\n\r\n# -----------------------\r\n# inputs & variables\r\n# -----------------------\r\n\r\n# wire in a drop down level selection node to the input, and rename to\r\n# something like 'seleect level to export room boundaries from' this\r\n# will display the drop down in the dynamo player with this title\r\n# which can then be used to find the name of the level\r\nlevelInput = IN[0]\r\nlevelName = levelInput.Name\r\n\r\n# the units of room boundary curves will need to be scaled so that\r\n# they display suitable as pixles in the svg\r\ncurveScale = 0.001\r\n\r\n# slightly scale display of svg to improve clarity at edges\r\nsvgScale = '0.95'\r\n\r\n# keep source code of svg neat with aligned xy values of equall length\r\n# to convert 0.1 into +0000.100 use format specification '0=+9.3f'\r\n# '0' specificies fill with a 0 padding character\r\n# '=' places fill padding after the '+' sign\r\n# '+' specifies a sign to be used on positive and negative numbers\r\n# '9' specifies number of characters including sign ad decimal point\r\n# '.3' specifices a precision of 3 decimal places\r\n# 'f' specifies fixed (not floating) point to including trailing zeros\r\n# read the docs on format specification\r\n# https://docs.python.org/2/library/string.html#format-specification-mini-language\r\nformatSpecification = '0=+9.3f'\r\n\r\n# set boundary location as 'Finish' or 'Center' refer to apidocs.com\r\n# http://www.revitapidocs.com/2018.1/349e4292-28b6-cffa-e128-50ac5c90db36.htm\r\nboundaryLocation = 'Finish'\r\n\r\n# set fill / stroke color of room boundaries in svg, refer to colors\r\n# https://www.w3schools.com/colors/colors_names.asp\r\nfillColor = 'gainsboro'\r\nstrokeColor = 'red'\r\n# set stroke widtho froom boundaries in the svg\r\nstrokeWidth = '0.1px'\r\n\r\n# -----------------------\r\n# define chop\r\n# -----------------------\r\n\r\n# to output the numbers in the same sub list nesting as it was inputed\r\n# clockwork provides a good example of how to chop lists unevenly\r\n# annotated with kudos from\r\n# https://github.com/andydandy74/ClockworkForDynamo/blob/master/nodes/1.x/List.Chop%2B.dyf\r\n\r\n\r\ndef ListChopUnevenly(chopList, chopLengths) :\r\n\r\n\t# create an empty list to return values from\r\n\tchopped = []\r\n\t# set an initail value for a counter\r\n\tcount = 0\r\n\t# find the length of the list to be chopped\r\n\tmax = len(chopList)\r\n\r\n\t# for each item in chopLengths\r\n\tfor num in chopLengths :\r\n\r\n\t\t# check if counter has reached the length of the chopList\r\n\t\tif count + num > max :\r\n\r\n\t\t\t# set the end value as length of the chopList\r\n\t\t\tend = max\r\n\r\n\t\t# if counter has not reached the length of the chopList\r\n\t\telse :\r\n\r\n\t\t\t# set the end value as the count + num\r\n\t\t\t# eg count plus current value in chopLengths loop\r\n\t\t\tend = count + num\r\n\r\n\t\t# after checking above if and else conditions then\r\n\t\t# slice the chopList between count and end\r\n\t\tsliced = chopList[count:end]\r\n\t\t# append the sliced list to chopped\r\n\t\tchopped.append(sliced)\r\n\t\t# set the count value to end value for next loop\r\n\t\tcount = end\r\n\r\n\t# when all loops complete return sliced list of chopped values\r\n\treturn chopped\r\n\r\n# -----------------------\r\n# get rooms for a single level\r\n# -----------------------\r\n\r\n# if there are any rooms that are deleted / unplaced or otherwise\r\n# unbounded, eg there are two rooms in a single room boundary\r\n# they will have a room area of 0.0 and need to be filtered out\r\n# the following filter 'filterArea0' will return rooms with an area\r\n# greater than 0.000, eg 0.001 or greater\r\n\r\n# built in parameter names allow us to refer to parameter names without\r\n# having to worry about if the parameter name dispalyed in revit is in\r\n# english, french, or another language, as it will always be the same\r\n# refer to apidocs.com for a full list of built in parameter enumeration\r\n# http://www.revitapidocs.com/2018.1/fb011c91-be7e-f737-28c7-3f1e1917a0e0.htm\r\nparamArea0 = BuiltInParameter.ROOM_AREA\r\n# provide elements to be tested by element id\r\nproviderArea0 = ParameterValueProvider(ElementId(paramArea0))\r\n# evaulate for values greater than test value\r\nevaluatorGr = FilterNumericGreater()\r\n# conversion factor for square meters to square feet\r\nsqMToSqFt = 10.7639\r\n# because the revit API considers values in square feet we need to use\r\n# a conversion factor to change to square meters, this is not strictly\r\n# necessary if tested against zero, but useful to understand.\r\ntestArea0 = 0.0 * sqMToSqFt\r\n# precision of rounding used to evaulate rule is not strictly necessary\r\n# if tested against zero, but included so can be adapted to other values\r\nepsilon = 10**-3\r\n# use rule for doubles\r\nruleArea0 = FilterDoubleRule(\r\n\tproviderArea0, evaluatorGr, testArea0, epsilon)\r\n# filter with rule\r\nfilterArea0 = ElementParameterFilter(ruleArea0)\r\n\r\n# adapted with kudos to archilab getRoomsByLevel\r\n# https://gist.github.com/ksobon/8007f64a889df00afd22#file-getroomsbylevel-py\r\n\r\n# unwrap the level selected from the dynamo node\r\nlevelUnwrapped = UnwrapElement(levelInput)\r\n# get the Id of the level\r\nlevelUnwrappedId = levelUnwrapped.Id\r\n# filter elements by the unwrapped level id\r\nlevelFilter = ElementLevelFilter(levelUnwrappedId)\r\n\r\n# alias areaFilter, for areas (not rooms) we will want to exclude\r\nareaFilter = AreaFilter()\r\n# change to room filter if you want svg of areas not rooms\r\n#areaFilter = RoomFilter()\r\n# collect elements to be excluded\r\nareaExcludes = fec(doc).WherePasses(areaFilter).ToElements()\r\n# convert to a list if not allready so\r\nareaExcludes = list(areaExcludes)\r\n\r\n# create empty set and list to store elements in\r\nelement_set = ElementSet()\r\nexcludes = List[ElementId]()\r\n# check if there are any areas to exclude\r\nif len(areaExcludes) == 0 :\r\n    # if there are no areas to exclude then\r\n    # filter for levelFilter and filterArea0\r\n    filters = LogicalAndFilter(levelFilter, filterArea0)\r\n# otherwise if there are areas to exclude\r\nelse:\r\n    # for each item in areaExcludes\r\n    for i in areaExcludes:\r\n        # use set to add items to excluded list\r\n        element_set.Insert(i)\r\n        elemIter = element_set.ForwardIterator()\r\n        elemIter.Reset()\r\n        while elemIter.MoveNext():\r\n            curElem = elemIter.Current\r\n            # add curent element Id in set to excluded list\r\n            excludes.Add(curElem.Id)\r\n    # the inverse of areaFilter\r\n    afterExclusion = ExclusionFilter(excludes)\r\n    # include levelFilter and afterExclusion\r\n    filtLevExc = LogicalAndFilter(levelFilter, afterExclusion)\r\n    # include previous filters and filterArea0\r\n    filters = LogicalAndFilter(filtLevExc, filterArea0)\r\n\r\n# create empty list to store room numbers in\r\nroomNumbers = []\r\n# collect rooms as spatial elements\r\n# without filters this includes rooms and areas\r\n# pass filter to exclude all areas and rooms with an area of 0.000\r\nallRoomsOnLevel = fec(doc).OfClass(Autodesk.Revit.DB.SpatialElement)\\\r\n.WherePasses(filters).ToElements()\r\n\r\n# for each room in all rooms on a single level\r\nfor i in allRoomsOnLevel :\r\n    # get room number as built in parameter\r\n    n = i.get_Parameter(BuiltInParameter.ROOM_NUMBER).AsString()\r\n    # append room number to list\r\n    roomNumbers.append(n)\r\n\r\n# room numbers will be used as id when creating svg polygon\r\n\r\n# -----------------------\r\n# get room boundaries, scale for pixels & chop into groups\r\n# -----------------------\r\n\r\n# adapted with kudos to forum post by jean\r\n# https://forum.dynamobim.com/t/bounding-box-issue/16159/9\r\n\r\n# create an empty list to store room boundaries\r\nroomBounds = []\r\n# set alias for default options\r\nopts = SpatialElementBoundaryOptions()\r\n# string to be evaluated in loop for boundary location\r\nbLocation = 'SpatialElementBoundaryLocation.' + boundaryLocation\r\n# for each room in selected level\r\nfor room in allRoomsOnLevel :\r\n    # set boundary location\r\n    opts.SpatialElementBoundaryLocation = eval(bLocation)\r\n    # create an empty list to store curves of room boundary\r\n    crvs = []\r\n    # room outer boundary is always at index [0]\r\n    for seg in room.GetBoundarySegments(opts)[0] :\r\n        # get the curve of the segment\r\n        # seg.GetCurve() works for revit 2017+ for previous versions use\r\n        # crv = seg.Curve\r\n        # refer to piersons forum post\r\n        # https://forum.dynamobim.com/t/lunchbox-2016-11-10-lunchbox-room-element-collector-issue/7374/4\r\n        crv = seg.GetCurve()\r\n        # set alias to convert curve\r\n        convertCurve = Revit.GeometryConversion.RevitToProtoCurve\r\n        # convert segment curve to proto geometry curve\r\n        curve = convertCurve.ToProtoType(crv, True)\r\n        # append converted curve\r\n        crvs.append(curve)\r\n\r\n    roomBounds.append(crvs)\r\n\r\n# create empty list to store scaled curves in\r\nscaled = []\r\n# create empty lsit to store sub list lengthd in\r\nboundLens = []\r\n\r\n# for each sublist of curves in room boundaries\r\nfor i in roomBounds :\r\n    # find the length of each sublist\r\n    boundLen = len(i)\r\n    # append length of curve sub list\r\n    boundLens.append(boundLen)\r\n\r\n    # for each curve item in sub list for each room\r\n    for j in i :\r\n        # scale the curve by a factor\r\n        scaledCurve = j.Scale(curveScale)\r\n        # find the start point of the scaled curve\r\n        scaledPoint = scaledCurve.StartPoint\r\n        # append the start point of the scaled curve\r\n        scaled.append(scaledPoint)\r\n\r\n# chop the scaled outer boundary points by the subList lengths\r\ncurveStartPoint = ListChopUnevenly(scaled, boundLens)\r\n\r\n# -----------------------\r\n# x & y points of curve start points\r\n# -----------------------\r\n\r\n# create empty lists to store values in\r\ncurveX = []\r\ncurveNY = []\r\ncurveLen = []\r\ncurveLen2 = []\r\n\r\nfor subList in curveStartPoint :\r\n\tfor pt in subList :\r\n\t\t# round point x values to 3 places\r\n\t\troundX = round(pt.X, 3)\r\n\t\t# append round x values\r\n\t\tcurveX.append(roundX)\r\n\t\t# round point y values to 3 places\r\n\t\troundY = round(pt.Y, 3)\r\n\t\t# multiply y value by -1 as svg rendered with y values going down\r\n\t\tnegativeY = -1 * roundY\r\n\t\t# append negative y values\r\n\t\tcurveNY.append(negativeY)\r\n\t# find length of sub list of curves to use in chop\r\n\tcurveLen.append(len(subList))\r\n\t# find length of sub list of curves * 2 to use in chop later\r\n\tcurveLen2.append(len(subList) * 2)\r\n\r\n# chop the curve points by the subList lengths\r\nchoppedX = ListChopUnevenly(curveX, curveLen)\r\n# for x and negative y\r\nchoppedNY = ListChopUnevenly(curveNY, curveLen)\r\n# group values\r\nchoppedXNY = choppedX, choppedNY\r\n\r\n# chopped x,-y values are used for transposing & viewBox\r\n\r\n# -----------------------\r\n# transpose XY values\r\n# -----------------------\r\n\r\n# chopped x,-y values are transposed into chooped flat pairs\r\n\r\n# transpose values in x, -y\r\ntransposedXY = list(zip(*choppedXNY))\r\n\r\n# pair x, -y values\r\npairedXY = []\r\nfor i in transposedXY :\r\n\tx = list( zip( *i ) )\r\n\tpairedXY.append(x)\r\n\r\nflatPairs = []\r\n# go down through 3 levels of list & sublists to find values\r\nfor i in pairedXY :\r\n\tfor j in i :\r\n\t\tfor k in j :\r\n\t\t\t# use format specification to ensure consistent\r\n\t\t\t# numbers of decimal places displayed in svg file\r\n\t\t\tformatted = format(k, formatSpecification)\r\n\t\t\t# append formatted values\r\n\t\t\tflatPairs.append(formatted)\r\n\r\n# chop by length of sublist of curves * 2\r\n# as values are paired chop lengths need to be doubled\r\nchoppedFlatPairs = ListChopUnevenly(flatPairs, curveLen2)\r\n# chopped flat pairs are used later to create polygons\r\n\r\n# -----------------------\r\n# create polygons\r\n# -----------------------\r\n\r\n# create empty lists to store values in\r\ncoordslist = []\r\npolygons = []\r\n\r\n\r\nfor xy in choppedFlatPairs :\r\n\t# join xy pairs with ',' seperator in a single list\r\n\tjoinedXY = ','.join(xy)\r\n\t# append joined x, -y pairs\r\n\tcoordslist.append(joinedXY)\r\n\r\n# in coordslist and roomNumbers for each instance at the same index\r\nfor coord, num in zip(coordslist, roomNumbers) :\r\n\t# string values, including spaces, to be joined\r\n\tpolygonJoins = '<polygon id=\\\"', num, '\\\" points=\\\"', coord, '\\\" />'\r\n\t# join strings with no extra spaces\r\n\tpolygon = ''.join(polygonJoins)\r\n\t# append polygon values\r\n\tpolygons.append(polygon)\r\n# sort polygons\r\npolygons.sort()\r\n# join polygons as a single string with a new line for each item\r\nstrPolygons = '\\n'.join(polygons)\r\n# strPolygons will be used later when writing the svg file\r\n\r\n# -----------------------\r\n# calculate viewbox values\r\n# -----------------------\r\n\r\n# create a string for the svg tag with values for the view box\r\n# all svg files start with a tag that tells browser to render as svg\r\nsvgStart = '<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" \\\r\nclass=\\\"gen-by-CTA-dyn-Synoptic-for-PowerBI\\\" viewBox=\\\"'\r\n# the viewBox contains coords to set out where polygons are rendered\r\n# the svg tag can include a transformation factor for scaling the svg\r\nsvgTransform = '\\\" transform=\\\"scale('\r\n# the full string for the svg tag including the above factor and\r\n# view box values calcualted below will be joined later in the script\r\nsvgEnd = ')\\\">'\r\n\r\n# refer to x & y components of choppedXNY with simple alias\r\nxy = choppedXNY\r\nx = xy[0]\r\ny = xy[1]\r\n\r\n# min x value from nested sublist extracted using consecutive min()\r\nxmin = min(min(x))\r\n# min x value rounded up/down for +/-ve numbers for use in svg tag\r\nif xmin < 0 : xminc = math.floor(xmin)\r\nelse : xminc = math.ceil(xmin)\r\n# max x value from nested sublist extracted using consecutive max()\r\nxmax = max(max(x))\r\n# width of svg viewbox rounded up from, max - min\r\nwidth = math.ceil(xmax - xminc)\r\n# min y value from nested sublist extracted using consecutive min()\r\nymin = min(min(y))\r\n# min y value rounded up/down for +/-ve numbers for use in svg tag\r\nif ymin < 0 : yminc = math.floor(ymin)\r\nelse : yminc = math.ceil(ymin)\r\n#yminc = math.ceil(ymin)\r\n# max y value from nested sublist extracted using consecutive max()\r\nymax = max(max(y))\r\n# height of svg viewbox rounded up from, max - min\r\nheight = math.ceil(ymax - yminc)\r\n# create a list of values\r\nsvg = svgStart, xminc, yminc, width, height, svgTransform, svgScale, \\\r\nsvgEnd\r\n\r\n# create an empty list to store svg attributes in\r\nsvgAttributes = []\r\n# for each item in svg list of values\r\nfor i in svg :\r\n\t# cast value as a string\r\n\ts = str(i)\r\n\t# join each character as a single string\r\n\tj = ''.join(s)\r\n\t# append joined strings\r\n\tsvgAttributes.append(j)\r\n# concatenate svg attributes into a single string with spaces\r\nstrOpenSvg = ' '.join(svgAttributes)\r\n\r\n# -----------------------\r\n# headers strings\r\n# -----------------------\r\n\r\n# create an ignored string to record when the svg exporter was run\r\nstrCreated = '<!--\\nCreated with Chapman Taylor Dynamo SVG exporter\\nby\\\r\nabear@chapmantaylor.com\\n\\nRevit Source File:'\r\n# the revit file location will be added later as docFilePath\r\n# the date will be added later as strNow\r\nstrDate = '\\nDate:'\r\n# end of the ignored string with a new line at the end\r\nstrEnd = '-->\\n'\r\n# style tag applies a style to all polygons\r\n# stroke width controls thickness of the line\r\n# by setting thickness a stroke can simulate a wall graphically\r\nstrOpenStyle = '\\n<style>\\npolygon {\\nfill: '\r\nstrStroke = ';\\nstroke: '\r\nstrStrokeWidth = ';\\nstroke-width: '\r\nstrCloseStyle = ';\\n}\\n</style>'\r\n# close the svg tag\r\nstrCloseSvg = '\\n</svg>'\r\n\r\n# list of headers to join\r\nheadersToJoin = strCreated, docFilePath, strDate, strNow, strEnd, \\\r\nstrOpenSvg\r\n# list of cascading style sheet (css) headers to join\r\ncssPolygon = strOpenStyle, fillColor, strStroke, strokeColor, \\\r\nstrStrokeWidth, strokeWidth, strCloseStyle\r\n# join svg headers with a new line between each item in list\r\nsvgHeaders = '\\n'.join(headersToJoin)\r\n# join css headers without a new line between each item in list\r\ncssHeaders = ''.join(cssPolygon)\r\n# headers, polygons, and closer to svg tag\r\njoinContent = svgHeaders, cssHeaders, '', strPolygons, strCloseSvg\r\n# join content into a single string with new lines between items\r\nstrContent = '\\n'.join(joinContent)\r\n\r\n# -----------------------\r\n# write svg file\r\n# -----------------------\r\n\r\n# the svg just needs to be written to a file now\r\n\r\n# save the svg to the same folder as the revit file\r\n# include the level name in the svg file name\r\nsvgPath = docPathFolder + levelName + ' - rooms.svg'\r\n# use try to allow a message to be displayed if fails\r\ntry :\r\n\t# use with so that file does not need to be manually closed\r\n\twith open(svgPath, 'w') as file :\r\n\t\t# write the svg file\r\n\t\tfile.write(strContent)\r\n\t\t# display a message with the svg path on a new line\r\n\t\tsvgMsg = 'svg updated' + '\\n' + svgPath\r\n# if the file write fails\r\nexcept :\r\n\t# display a fail message\r\n\tsvgMsg = 'svg not updated'\r\n\r\n# the svg file has been created\r\n\r\n# -----------------------\r\n# out\r\n# -----------------------\r\n\r\n# send the svgMsg to the OUT port\r\nOUT = svgMsg",
+      "VariableInputPorts": true,
+      "Id": "26a7470cb3e0497d9fb13c7263547cc7",
+      "Inputs": [
+        {
+          "Id": "26202b365e6349988c6cc397f7555031",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "d0e98dfd62a940f8ac381dd79746c1be",
+          "Name": "OUT",
+          "Description": "Résultat du script Python",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Exécute un script IronPython intégré."
+    },
+    {
+      "ConcreteType": "DSRevitNodesUI.Levels, DSRevitNodesUI",
+      "SelectedIndex": 0,
+      "SelectedString": "Niveau 1",
+      "NodeType": "ExtensionNode",
+      "Id": "3d4b6acd02944f37a5790b2d2778c57d",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "ec1a1a995b554944b81fe0072e0e29be",
+          "Name": "Levels",
+          "Description": "Levels sélectionné",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Sélectionner un niveau dans le document actif"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "ec1a1a995b554944b81fe0072e0e29be",
+      "End": "26202b365e6349988c6cc397f7555031",
+      "Id": "6ebf4f985c9c452999a197e5ba7e4cd0"
+    }
+  ],
+  "Dependencies": [],
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.2.1.5175",
+      "RunType": "Automatic",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "Aperçu en arrière-plan",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "ShowGeometry": true,
+        "Name": "Python Script",
+        "Id": "26a7470cb3e0497d9fb13c7263547cc7",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 513.99999999999989,
+        "Y": 248.79999999999995
+      },
+      {
+        "ShowGeometry": true,
+        "Name": "Levels",
+        "Id": "3d4b6acd02944f37a5790b2d2778c57d",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 110.00000000000006,
+        "Y": 240.79999999999995
+      }
+    ],
+    "Annotations": [],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}
